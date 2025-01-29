@@ -7,7 +7,6 @@ from collections import deque
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.optimizers import Adam
-import random
 
 #window size
 
@@ -45,12 +44,6 @@ class Player(pygame.sprite.Sprite):
             self.speedx = -7
         elif keystate[pygame.K_RIGHT] or action == 1:
             self.speedx = 7
-            '''
-        elif keystate[pygame.K_DOWN] or action == 2:
-            self.speedy = -1
-        elif keystate[pygame.K_UP] or action == 3:
-            self.speedy = 1
-            '''
 
         else:
             self.speedx == 0
@@ -87,7 +80,7 @@ class Enemy(pygame.sprite.Sprite):
         self.rect.y = random.randrange(2,6)
         
         self.speedx = 0
-        self.speedy = 8
+        self.speedy = 15
         
         
     def update(self):
@@ -108,101 +101,17 @@ class Enemy(pygame.sprite.Sprite):
     def getCoordinates(self):
         return(self.rect.x, self.rect.y)       
 
-'''
-class SecEnemy(pygame.sprite.Sprite):
-    
-    def __init__(self):
-        pygame.sprite.Sprite.__init__(self)
-        self.image = pygame.Surface((10,10))
-        self.image.fill(BLUE)
-        self.rect = self.image.get_rect()
-        self.radius = 5
-        pygame.draw.circle(self.image, BLUE, self.rect.center, self.radius)
-        self.rect.x = random.randrange(0, 360)
-        self.rect.y = random.randrange(0,HEIGHT)
-        
-        self.speedx = 3
-        self.speedy = 0
-        
-        
-    def update(self):
-        
-        self.rect.x += self.speedx
-        self.rect.y += self.speedy
-        
-    
-        if self.rect.right > WIDTH + 1:
-             self.rect.x = random.randrange(0,HEIGHT - self.rect.height) # Merkezden aldığımızdan ekrana sığdırma yöntemidir. Çerçevenin dışından gelemeyecek.
-             self.rect.y = random.randrange(2,6)
-             self.speedx = 3
-             self.speedy = 0
-
-             
-
-    def getCoordinates(self):
-        return(self.rect.x, self.rect.y)       
-
-    '''            
-
-
-        
-# class Point(pygame.sprite.Sprite):
-    
-#     def __init__(self):
-#         pygame.sprite.Sprite.__init__(self)
-#         self.image = pygame.Surface((10,10))
-#         self.image.fill(GREEN)
-#         self.rect = self.image.get_rect()
-#         self.radius = 10
-#         pygame.draw.circle(self.image, GREEN, self.rect.center, self.radius)
-#         self.rect.x = random.randrange(0, WIDTH - self.rect.width)
-#         self.rect.y = random.randrange(0, HEIGHT - self.rect.height)
-#         self.speedx = 0
-#         self.speedy = 0
-        
-#     def update(self):
-        
-#         self.rect.x += self.speedx
-#         self.rect.y += self.speedy
-        
-            
-                        
-#         # Sağ duvara çarptığında hızını tersine çevir            
-#         if self.rect.right > WIDTH:
-#             self.rect.right = WIDTH
-#             self.speedx = -self.speedx
-            
-#         # Sol duvara çarptığında hızını tersine çevir            
-#         if self.rect.left < 0:
-#             self.rect.left = 0
-#             self.speedx = -self.speedx 
-        
-#         # Üst duvara çarptığında hızını tersine çevir
-#         if self.rect.top < 0:
-#             self.rect.top = 0
-#             self.speedy = -self.speedy 
-            
-#         # Alt duvara çarptığında hızını tersine çevir
-#         if self.rect.bottom > HEIGHT/2:
-#             self.rect.bottom = HEIGHT/2
-#             self.speedy = -self.speedy 
-            
-#     def getCoordinates(self):
-#         return(self.rect.x, self.rect.y)         
-
-
 
 
             
 class DQLAgent:
-    def __init__(self):
+    def __init__(self, batch_size = 32):
         #parameter
         self.state_size = 10 #distance
         self.action_size = 3 #right, left ,up, down, none
-        
         self.gamma = 0.95
         self.learning_rate = 0.001
-        
+        self.batch_size = batch_size
         self.epsilon = 1
         self.epsilon_decay = 0.995
         self.epsilon_min = 0.01
@@ -218,51 +127,92 @@ class DQLAgent:
         
         model = Sequential()
         
-        model.add(Dense(64,input_dim = self.state_size, activation ="relu"))
-        model.add(Dense(64, activation ="relu"))
-        model.add(Dense(64, activation ="relu"))
-        model.add(Dense(64, activation ="relu"))
+        model.add(Dense(32,input_dim = self.state_size, activation ="relu"))
+        model.add(Dense(32, activation ="relu"))
+        model.add(Dense(32, activation ="relu"))
         model.add(Dense(self.action_size, activation = "linear"))
         model.compile(loss = "mse", optimizer= Adam(learning_rate = self.learning_rate))
         return model
     
-    def remember(self,state,action,reward,next_state,done):
+    def remember(self,state,action,reward,next_state,done):        
+        self.memory.append((state, action, reward, next_state, done)) # popleft if MAX_MEMORY is reached
         
-        #storage
-        self.memory.append((state,action,reward,next_state,done))
         
-    def act(self,state):
         
-        #act exploer or exploit
+    def train_long_term_memory(self):
+         if len(self.memory) > self.batch_size:
+                minibatch = random.sample(self.memory, self.batch_size)  # list of tuples
+                print(minibatch)
+
+         else:
+                minibatch = self.memory
+                print(minibatch)
+
+            
+        # Ayrıştırma
+         states, actions, rewards, next_states, dones = zip(*minibatch)
         
-        state = np.array(state)
-        if np.random.rand() <= self.epsilon:
-            return random.randrange(self.action_size)
-        else:
-            act_values = self.model.predict(state,verbose = 0)
-            return np.argmax(act_values[0])
+         # Tüm minibatch için eğitim
+         targets = []
+         for i in range(len(states)):
+             state = np.array(states[i]).reshape(1, -1)
+             next_state = np.array(next_states[i]).reshape(1, -1)
+             target = rewards[i]
+             if not dones[i]:
+                 target += self.gamma * np.amax(self.model.predict(next_state, verbose=0)[0])
+             target_f = self.model.predict(state, verbose=0)
+             target_f[0][actions[i]] = target
+             targets.append((state, target_f))
+        
+        # Modeli minibatch üzerinden eğit
+         for state, target_f in targets:
+             self.model.fit(state, target_f, epochs=1, verbose=0)
         
 
-                
-    def replay(self, batch_size):
-            if len(self.memory) < batch_size:
-                return
-            minibatch = random.sample(self.memory, min(batch_size, len(self.memory)))
-            for state, action, reward, next_state, done in minibatch:
-                target = reward
-                if not done:
-                    target = (reward + self.gamma * np.amax(self.model.predict(next_state)[0]))
-                target_f = self.model.predict(state)
-                target_f[0][action] = target
-                self.model.fit(state, target_f, epochs=1, verbose=0)
-            if self.epsilon > self.epsilon_min:
-                self.epsilon *= self.epsilon_decay
+    def train_short_memory(self, state, action, reward, next_state, done):
+        state = np.array(state).reshape(1, -1)
+        next_state = np.array(next_state).reshape(1, -1)
+        target = reward
+        if not done:
+            target += self.gamma * np.amax(self.model.predict(next_state, verbose=0)[0])
+        target_f = self.model.predict(state, verbose=0)
+        target_f[0][action] = target
+        self.model.fit(state, target_f, epochs=1, verbose=0)
+        
+    # def replay(self, batch_size):
+    #     if len(self.memory) < batch_size:
+    #         return
+    #     minibatch = random.sample(self.memory, min(batch_size, len(self.memory)))
+    #     for state, action, reward, next_state, done in minibatch:
+    #         state = np.array(state).reshape(1, -1)
+    #         next_state = np.array(next_state).reshape(1, -1)
+    #         target = reward
+    #         if not done:
+    #             target = reward + self.gamma * np.amax(self.model.predict(next_state, verbose=0)[0])
+    #         target_f = self.model.predict(state, verbose=0)
+    #         target_f[0][action] = target
+    #         self.model.fit(state, target_f, epochs=1, verbose=0)
+
+
     
     
     def adapativeEGreddy(self):
         if self.epsilon > self.epsilon_min:
             self.epsilon = self.epsilon * self.epsilon_decay
             
+            
+    def act(self, state):
+        # Ensure the state is a NumPy array and has the correct shape
+        state = np.array(state).reshape(1, -1)
+        if np.random.rand() <= self.epsilon:
+            print('Return: Random')
+            return random.randrange(self.action_size)
+        else:
+            act_values = self.model.predict(state, verbose=0)
+            print('Return: Model')
+            return np.argmax(act_values[0])
+
+                    
             
 class Env(pygame.sprite.Sprite):
     def __init__(self):
@@ -277,48 +227,17 @@ class Env(pygame.sprite.Sprite):
         self.m3 = Enemy()
         self.m4 = Enemy()
         self.m5 = Enemy()
-        '''
-        self.m6 = SecEnemy()
-        self.m7 = SecEnemy()
-        self.m8 = SecEnemy()
-        self.m9 = SecEnemy()
-        self.m10 = SecEnemy()
-        '''
         self.all_sprite.add(self.m1)
         self.all_sprite.add(self.m2)
         self.all_sprite.add(self.m3)
         self.all_sprite.add(self.m4)
         self.all_sprite.add(self.m5)
-        '''
-        self.all_sprite.add(self.m6)
-        self.all_sprite.add(self.m7)
-        self.all_sprite.add(self.m8)
-        self.all_sprite.add(self.m9)
-        self.all_sprite.add(self.m10)
-        '''
         self.enemy.add(self.m1)
         self.enemy.add(self.m2)
         self.enemy.add(self.m3)
         self.enemy.add(self.m4)
         self.enemy.add(self.m5)
-        '''
-        self.enemy.add(self.m6)
-        self.enemy.add(self.m7)
-        self.enemy.add(self.m8)
-        self.enemy.add(self.m9)
-        self.enemy.add(self.m10)
-        '''
-        '''
-        self.point = Point()
-        self.point2 = Point()
-        self.point3 = Point()
-        self.all_sprite.add(self.point)
-        self.all_sprite.add(self.point2)
-        self.all_sprite.add(self.point3)
-        self.points.add(self.point)
-        self.points.add(self.point2)
-        self.points.add(self.point3)
-        '''
+
 
         
         
@@ -349,20 +268,6 @@ class Env(pygame.sprite.Sprite):
         next_m3_state = self.m3.getCoordinates()
         next_m4_state = self.m4.getCoordinates()
         next_m5_state = self.m5.getCoordinates()
-        '''
-        next_m6_state = self.m6.getCoordinates()
-        next_m7_state = self.m7.getCoordinates()
-        next_m8_state = self.m8.getCoordinates()
-        next_m9_state = self.m9.getCoordinates()
-        next_m10_state = self.m10.getCoordinates()
-        '''
-        
-        '''
-        next_point_state = self.point.getCoordinates()
-        next_point2_state = self.point2.getCoordinates()
-        next_point3_state = self.point3.getCoordinates()
-        '''
-        
 
 
         #find distance 
@@ -377,26 +282,7 @@ class Env(pygame.sprite.Sprite):
         state_list.append(self.findDistance(next_player_state[1], next_m4_state[1]))
         state_list.append(self.findDistance(next_player_state[0], next_m5_state[0]))
         state_list.append(self.findDistance(next_player_state[1], next_m5_state[1]))
-        '''
-        state_list.append(self.findDistance(next_player_state[0], next_m6_state[0]))
-        state_list.append(self.findDistance(next_player_state[1], next_m6_state[1]))
-        state_list.append(self.findDistance(next_player_state[0], next_m7_state[0]))
-        state_list.append(self.findDistance(next_player_state[1], next_m7_state[1]))
-        state_list.append(self.findDistance(next_player_state[0], next_m8_state[0]))
-        state_list.append(self.findDistance(next_player_state[1], next_m8_state[1]))
-        state_list.append(self.findDistance(next_player_state[0], next_m9_state[0]))
-        state_list.append(self.findDistance(next_player_state[1], next_m9_state[1]))
-        state_list.append(self.findDistance(next_player_state[0], next_m10_state[0]))
-        state_list.append(self.findDistance(next_player_state[1], next_m10_state[1]))
-        '''
-        '''
-        state_list.append(self.findDistance(next_player_state[0], next_point_state[0]))
-        state_list.append(self.findDistance(next_player_state[1], next_point_state[1]))
-        state_list.append(self.findDistance(next_player_state[0], next_point2_state[0]))
-        state_list.append(self.findDistance(next_player_state[1], next_point2_state[1]))
-        state_list.append(self.findDistance(next_player_state[0], next_point3_state[0]))
-        state_list.append(self.findDistance(next_player_state[1], next_point3_state[1]))
-        '''
+
 
 
         
@@ -415,48 +301,20 @@ class Env(pygame.sprite.Sprite):
         self.m3 = Enemy()
         self.m4 = Enemy()
         self.m5 = Enemy()
-        '''
-        self.m6 = SecEnemy()
-        self.m7 = SecEnemy()
-        self.m8 = SecEnemy()
-        self.m9 = SecEnemy()
-        self.m10 = SecEnemy()
-        '''
+
         self.all_sprite.add(self.m1)
         self.all_sprite.add(self.m2)
         self.all_sprite.add(self.m3)
         self.all_sprite.add(self.m4)
         self.all_sprite.add(self.m5)
-        '''
-        self.all_sprite.add(self.m6)
-        self.all_sprite.add(self.m7)
-        self.all_sprite.add(self.m8)
-        self.all_sprite.add(self.m9)
-        self.all_sprite.add(self.m10)
-        '''
+
         self.enemy.add(self.m1)
         self.enemy.add(self.m2)
         self.enemy.add(self.m3)
         self.enemy.add(self.m4)
         self.enemy.add(self.m5)
-        '''
-        self.enemy.add(self.m6)
-        self.enemy.add(self.m7)
-        self.enemy.add(self.m8)
-        self.enemy.add(self.m9)
-        self.enemy.add(self.m10)
-        '''
-        '''
-        self.point = Point()
-        self.point2 = Point()
-        self.point3 = Point()
-        self.all_sprite.add(self.point)
-        self.all_sprite.add(self.point2)
-        self.all_sprite.add(self.point3)
-        self.points.add(self.point)
-        self.points.add(self.point2)
-        self.points.add(self.point3)
-        '''
+
+
 
         
 
@@ -474,18 +332,7 @@ class Env(pygame.sprite.Sprite):
         m3_state = self.m3.getCoordinates()
         m4_state = self.m4.getCoordinates()
         m5_state = self.m5.getCoordinates()
-        '''
-        m6_state = self.m6.getCoordinates()
-        m7_state = self.m7.getCoordinates()
-        m8_state = self.m8.getCoordinates()
-        m9_state = self.m9.getCoordinates()
-        m10_state = self.m10.getCoordinates()
-        '''
-        '''
-        point_state = self.point.getCoordinates()
-        point2_state = self.point2.getCoordinates()
-        point3_state = self.point3.getCoordinates()
-        '''
+
 
         
 
@@ -502,26 +349,7 @@ class Env(pygame.sprite.Sprite):
         state_list.append(self.findDistance(player_state[1], m4_state[1]))
         state_list.append(self.findDistance(player_state[0], m5_state[0]))
         state_list.append(self.findDistance(player_state[1], m5_state[1]))
-        '''
-        state_list.append(self.findDistance(player_state[0], m6_state[0]))
-        state_list.append(self.findDistance(player_state[1], m6_state[1]))
-        state_list.append(self.findDistance(player_state[0], m7_state[0]))
-        state_list.append(self.findDistance(player_state[1], m7_state[1]))
-        state_list.append(self.findDistance(player_state[0], m8_state[0]))
-        state_list.append(self.findDistance(player_state[1], m8_state[1]))
-        state_list.append(self.findDistance(player_state[0], m9_state[0]))
-        state_list.append(self.findDistance(player_state[1], m9_state[1]))
-        state_list.append(self.findDistance(player_state[0], m10_state[0]))
-        state_list.append(self.findDistance(player_state[1], m10_state[1]))
-        '''
-        '''
-        state_list.append(self.findDistance(player_state[0], point_state[0]))
-        state_list.append(self.findDistance(player_state[1], point_state[1]))
-        state_list.append(self.findDistance(player_state[0], point2_state[0]))
-        state_list.append(self.findDistance(player_state[1], point2_state[1]))
-        state_list.append(self.findDistance(player_state[0], point3_state[0]))
-        state_list.append(self.findDistance(player_state[1], point3_state[1]))
-        '''
+
 
         return [state_list]
     
@@ -533,7 +361,7 @@ class Env(pygame.sprite.Sprite):
         
         state = self.initialState()
         running = True
-        batch_size = 1
+        
         while running:
             self.reward = 1
             self.total_reward += self.reward                
@@ -556,21 +384,14 @@ class Env(pygame.sprite.Sprite):
                 self.done = True
                 running = False
                 print("Total reward: ",self.total_reward)
+                
+                
+                self.agent.remember(state, action, self.reward, next_state, self.done)  # Add Memory
+                self.agent.train_long_term_memory() # Long Train
 
-            '''
-            touch = pygame.sprite.spritecollide(self.player,self.points, False , pygame.sprite.collide_circle)
-            if touch:
-                self.reward = 500
-                self.total_reward += self.reward
-                self.done = False
-                running = False
-                print("Total reward: ",self.total_reward)
-            '''
-            #storage
-            self.agent.remember(state, action, self.reward, next_state, self.done)
-                        
-            if len(self.agent.memory) > batch_size:
-                self.agent.replay(batch_size)
+            
+            #short train                        
+            self.agent.train_short_memory(state, action, self.reward, next_state, self.done)
 
             #update
             state = next_state 
@@ -589,23 +410,33 @@ class Env(pygame.sprite.Sprite):
             
                 
     pygame.quit()
-
-if __name__ =="__main__":
+if __name__ == "__main__":
     env = Env()
     liste = []
     t = 0
-    while True:
-        t += 1 
-        print("Episode: ",t)
+
+    # Pygame başlatma işlemleri döngü dışında
+    pygame.init()
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("RL Game")
+    clock = pygame.time.Clock()
+
+    while True:  # Maksimum 10,000 episode
+        t += 1
+        print("Episode: ", t)
         liste.append(env.total_reward)
-        
-        #initilaize pygame and create window
-        pygame.init()
-        screen = pygame.display.set_mode((WIDTH,HEIGHT))
-        pygame.display.set_caption("RL Game")
-        clock = pygame.time.Clock()
-        
+
         env.run()
+
+        # GPU bellek temizleme
+        # if (t + 1) % 500 == 0:
+        #     gc.collect()
+        #     print(tf.config.experimental.get_memory_info('GPU:0'))
+        #     print('Bellek:', gc.collect())
+
+    pygame.quit()
+    print("Eğitim tamamlandı!")
+
 
     
         
